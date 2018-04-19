@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Apr 11 18:36:41 2018
+
+@author: zhangningning
+"""
+
+import pandas as pd
+#from sklearn.cross_validation import train_test_split
+from sklearn.linear_model import LinearRegression
+import matplotlib.pyplot as plt
+from sklearn import metrics
+#打开数据
+data=pd.read_csv('/Users/zhangningning/Downloads/GALAXY_17116603_20180409_211545.txt_17116603_20180409_211545.txt',sep='\t')
+#将送达地名称分成店铺，城市，具体poi地址
+a=data['sender_name'].str.split('-',expand=True)
+a.columns=['shop','city','sug','none']
+redata=pd.concat([data,a],axis=1)
+del redata['none']
+redata[['newshop','no']]=redata['shop'].str.split('(',expand=True)
+del redata['no']
+redata[['new_shop','noe']]=redata['newshop'].str.split('（',expand=True)
+del redata['noe']
+#输出海葵单总单数
+n=len(redata['waybill_id'])
+print('海葵单总单数：', n)
+#1.删除重复数据
+dup=redata[redata.duplicated(['waybill_id'],False)==True]
+redata.drop(dup.index,inplace=True)
+print('删除重复数据剩余单数：',len(redata))
+#2.删除预订单
+prebook=pd.read_csv('/Users/zhangningning/Downloads/prebook.txt_17161213_20180410_142638.txt',sep='\t')
+prebook1=prebook[['interface_feature_haikui_waybill_day.waybill_id','interface_feature_haikui_waybill_day.is_prebook']]
+redata=pd.merge(redata,prebook1,left_on='waybill_id',right_on='interface_feature_haikui_waybill_day.waybill_id',how='left')
+redata=redata[redata['interface_feature_haikui_waybill_day.is_prebook']!=1.0]
+print('删除预订单以后剩余单数：',len(redata))
+#3.按照城市，商家分组，得出占比
+group1=redata[['waybill_id','city_id','new_shop']].groupby(['city_id','new_shop'],sort=False).count()
+group1=group1.rename(columns={'waybill_id':'count'})
+group1.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/count.txt')
+group1=pd.read_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/count.txt',sep=',')
+group1['rate(%)']=group1['count']/n*100
+group1
+group1.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/city_shop_count.txt')
+#4.筛选多单
+newdata=redata[redata.duplicated(['rider_id','segment_start_tm','segment_end_tm'],False)==False]
+print('筛除多单数：',len(newdata))
+#5.筛选特征全部都有的数据
+newdata=newdata[pd.isnull(newdata['waybill_area_ridercount_without_busy'])==False]
+newdata=newdata[pd.isnull(newdata['waybill_area_deliverdcount_past_30min'])==False]
+newdata=newdata[pd.isnull(newdata['waybill_poi_untakecount'])==False]
+newdata=newdata[pd.isnull(newdata['goods_total_price'])==False]
+newdata=newdata[pd.isnull(newdata['arrive_time'])==False]
+print('筛选特征全部都有的数据',len(newdata))
+XY=newdata[(newdata['shop']=='连咖啡')&(newdata['city_id']==310100)][['dt','waybill_area_ridercount_without_busy','waybill_poi_untakecount','waybill_area_deliverdcount_past_30min','goods_total_price','arrive_time','take_duration']]
+X=XY[['dt','waybill_area_ridercount_without_busy','waybill_poi_untakecount','waybill_area_deliverdcount_past_30min','goods_total_price','arrive_time']]
+Y=XY[['take_duration']]
+print('连咖啡上海海葵订单数：',len(XY))
+print(XY.corr())
+#X_train,X_test,y_train,y_test=train_test_split(X,Y,train_size=0.7)
+XY_train=XY[(20180310<XY['dt'])&(XY['dt']<20180321)]
+XY_test=XY[(20180322<XY['dt'])&(XY['dt']<20180327)]
+
+X_bj_test=XY_test[['waybill_area_ridercount_without_busy','waybill_poi_untakecount','waybill_area_deliverdcount_past_30min','goods_total_price','arrive_time']]
+
+y_bj_test=XY_test['take_duration']
+X_bj_train=XY_train[['waybill_area_ridercount_without_busy','waybill_poi_untakecount','waybill_area_deliverdcount_past_30min','goods_total_price','arrive_time']]
+
+y_bj_train=XY_train['take_duration']
+print('测试数据长度',len(y_bj_test))
+LR=LinearRegression()
+model=LR.fit(X_bj_train,y_bj_train)
+#计算置信度
+def conf_level(pre,data,limit):
+    diff=data-pre
+    return len(diff[abs(diff)<limit])/len(data)
+#我们的模型效果
+print('-----------------')
+print('下面是我们的模型的评价指标')
+print('模型参数：',model.coef_)
+print('R方',model.score(X_bj_train,y_bj_train))
+y_bj_pre=model.predict(X_bj_test)
+print('ME',(y_bj_test-y_bj_pre).sum()/len(y_bj_test))
+print('MAE',metrics.mean_absolute_error(y_bj_pre,y_bj_test))
+conf_level_1min=conf_level(y_bj_pre,y_bj_test,60)
+print('1min 置信度',conf_level_1min)
+conf_level_2min=conf_level(y_bj_pre,y_bj_test,120)
+print('2min 置信度',conf_level_2min)
+conf_level_3min=conf_level(y_bj_pre,y_bj_test,180)
+print('3min 置信度',conf_level_3min)
+conf_level_4min=conf_level(y_bj_pre,y_bj_test,240)
+print('4min 置信度',conf_level_4min)
+conf_level_5min=conf_level(y_bj_pre,y_bj_test,300)
+print('5min 置信度',conf_level_5min)
+conf_level_10min=conf_level(y_bj_pre,y_bj_test,600)
+print('10min 置信度',conf_level_10min)
+conf_level_15min=conf_level(y_bj_pre,y_bj_test,15*60)
+print('15min 置信度',conf_level_15min)
+d=y_bj_test-y_bj_pre
+plt.hist(d)
+plt.title('my_pre')
+plt.xlabel('Actual-prediction')
+plt.ylabel('ME')
+plt.show()
+print('-----------------')
+print('下面是线上模型的评价指标')
+mae=abs(y_bj_test-300).sum()/len(y_bj_test)
+print('ME',(y_bj_test-300).sum()/len(y_bj_test))
+print('MAE',mae)
+conf_level_1min=conf_level(300,y_bj_test,60)
+print('1min 置信度',conf_level_1min)
+conf_level_2min=conf_level(300,y_bj_test,120)
+print('2min 置信度',conf_level_2min)
+conf_level_3min=conf_level(300,y_bj_test,180)
+print('3min 置信度',conf_level_3min)
+conf_level_4min=conf_level(300,y_bj_test,240)
+print('4min 置信度',conf_level_4min)
+conf_level_5min=conf_level(300,y_bj_test,300)
+print('5min 置信度',conf_level_5min)
+conf_level_10min=conf_level(300,y_bj_test,600)
+print('10min 置信度',conf_level_10min)
+conf_level_15min=conf_level(300,y_bj_test,15*60)
+print('15min 置信度',conf_level_15min)
+dd=y_bj_test-300
+plt.hist(dd)
+plt.title('online_pre')
+plt.xlabel('Actual-prediction')
+plt.ylabel('ME')
+plt.show()
+#设置骑手入离店时长异常值的边界设为15分钟
+unnormal_time=900
+new_X_train=XY_train[XY_train['take_duration']<unnormal_time][['waybill_area_ridercount_without_busy','waybill_poi_untakecount','waybill_area_deliverdcount_past_30min','goods_total_price','arrive_time']]
+new_y_train=XY_train[XY_train['take_duration']<unnormal_time]['take_duration']
+new_X_test=XY_test[XY_test['take_duration']<unnormal_time][['waybill_area_ridercount_without_busy','waybill_poi_untakecount','waybill_area_deliverdcount_past_30min','goods_total_price','arrive_time']]
+new_y_test=XY_test[XY_test['take_duration']<unnormal_time]['take_duration']
+new_XY_train=pd.concat([new_X_train,new_y_train],axis=1)
+LR=LinearRegression()
+model=LR.fit(new_X_train,new_y_train)
+LR=LinearRegression()
+model=LR.fit(new_X_train,new_y_train)
+#我们的模型效果（去除异常值）
+print('-----------------')
+print('下面是我们的模型的评价指标')
+print('模型参数：',model.coef_)
+print('R方',model.score(X_bj_train,y_bj_train))
+y_bj_pre=model.predict(new_X_test)
+print('ME',(new_y_test-y_bj_pre).sum()/len(new_y_test))
+print('MAE',metrics.mean_absolute_error(y_bj_pre,new_y_test))
+conf_level_1min=conf_level(y_bj_pre,new_y_test,60)
+print('1min 置信度',conf_level_1min)
+conf_level_2min=conf_level(y_bj_pre,new_y_test,120)
+print('2min 置信度',conf_level_2min)
+conf_level_3min=conf_level(y_bj_pre,new_y_test,180)
+print('3min 置信度',conf_level_3min)
+conf_level_4min=conf_level(y_bj_pre,new_y_test,240)
+print('4min 置信度',conf_level_4min)
+conf_level_5min=conf_level(y_bj_pre,new_y_test,300)
+print('5min 置信度',conf_level_5min)
+conf_level_10min=conf_level(y_bj_pre,new_y_test,600)
+print('10min 置信度',conf_level_10min)
+conf_level_15min=conf_level(y_bj_pre,new_y_test,15*60)
+print('15min 置信度',conf_level_15min)
+d=new_y_test-y_bj_pre
+plt.hist(d)
+plt.title('my_pre')
+plt.xlabel('Actual-prediction')
+plt.ylabel('ME')
+plt.show()
+print('-----------------')
+print('下面是线上模型的评价指标')
+mae=abs(new_y_test-300).sum()/len(new_y_test)
+print('ME',(new_y_test-300).sum()/len(new_y_test))
+print('MAE',mae)
+conf_level_1min=conf_level(300,new_y_test,60)
+print('1min 置信度',conf_level_1min)
+conf_level_2min=conf_level(300,new_y_test,120)
+print('2min 置信度',conf_level_2min)
+conf_level_3min=conf_level(300,new_y_test,180)
+print('3min 置信度',conf_level_3min)
+conf_level_4min=conf_level(300,new_y_test,240)
+print('4min 置信度',conf_level_4min)
+conf_level_5min=conf_level(300,new_y_test,300)
+print('5min 置信度',conf_level_5min)
+conf_level_10min=conf_level(300,new_y_test,600)
+print('10min 置信度',conf_level_10min)
+conf_level_15min=conf_level(300,new_y_test,15*60)
+print('15min 置信度',conf_level_15min)
+dd=new_y_test-300
+plt.hist(dd)
+plt.title('online_pre')
+plt.xlabel('Actual-prediction')
+plt.ylabel('ME')
+plt.show()
