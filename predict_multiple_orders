@@ -1,253 +1,283 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Thu Apr 12 17:27:39 2018
+Created on Fri Apr 13 15:22:03 2018
 
 @author: zhangningning
 """
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Apr 11 19:02:45 2018
-
-@author: zhangningning
-"""
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Apr 11 18:36:41 2018
-
-@author: zhangningning
-"""
-
+import numpy as np
 import pandas as pd
 from math import radians, cos, sin, asin, sqrt
 from sklearn.cross_validation import train_test_split
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
 from sklearn import metrics
-#0.数据打开和预处理
-#打开数据
-data=pd.read_csv('/Users/zhangningning/Downloads/GALAXY_17116603_20180409_211545.txt_17116603_20180409_211545.txt',sep='\t')
-#将送达地名称分成店铺，城市，具体poi地址
-a=data['sender_name'].str.split('-',expand=True)
-a.columns=['shop','city','sug','none']
-redata=pd.concat([data,a],axis=1)
+
+# 0.数据打开和预处理
+# 打开数据
+data = pd.read_csv('/Users/zhangningning/Downloads/GALAXY_17116603_20180409_211545.txt_17116603_20180409_211545.txt',
+                   sep='\t')
+# 将送达地名称分成店铺，城市，具体poi地址
+a = data['sender_name'].str.split('-', expand=True)
+a.columns = ['shop', 'city', 'sug', 'none']
+redata = pd.concat([data, a], axis=1)
 del redata['none']
-redata[['newshop','no']]=redata['shop'].str.split('(',expand=True)
+redata[['newshop', 'no']] = redata['shop'].str.split('(', expand=True)
 del redata['no']
-redata[['new_shop','noe']]=redata['newshop'].str.split('（',expand=True)
+redata[['new_shop', 'noe']] = redata['newshop'].str.split('（', expand=True)
 del redata['noe']
-shop_location=pd.read_csv('/Users/zhangningning/Downloads/商家经纬度GALAXY_17280837_20180411_204616.txt_17280837_20180411_204616.txt',sep='\t')
-redata=pd.merge(redata,shop_location,on=['dt','waybill_id'],how='left')
-#输出海葵单总单数
-n=len(redata['waybill_id'])
+shop_location = pd.read_csv(
+    '/Users/zhangningning/Downloads/商家经纬度GALAXY_17280837_20180411_204616.txt_17280837_20180411_204616.txt', sep='\t')
+redata = pd.merge(redata, shop_location, on=['dt', 'waybill_id'], how='left')
+# 输出海葵单总单数
+n = len(redata['waybill_id'])
 print('海葵单总单数：', n)
 
-#-----------------------------------------------------------------------------------
-#1.删除重复数据
-dup=redata[redata.duplicated(['waybill_id'],False)==True]
-redata.drop(dup.index,inplace=True)
-print('删除重复数据剩余单数：',len(redata))
-#-----------------------------------------------------------------------------------------------------------------------
-#2.删除预订单
-prebook=pd.read_csv('/Users/zhangningning/Downloads/prebook.txt_17161213_20180410_142638.txt',sep='\t')
-prebook1=prebook[['interface_feature_haikui_waybill_day.waybill_id','interface_feature_haikui_waybill_day.is_prebook']]
-redata=pd.merge(redata,prebook1,left_on='waybill_id',right_on='interface_feature_haikui_waybill_day.waybill_id',how='left')
-redata=redata[redata['interface_feature_haikui_waybill_day.is_prebook']!=1.0]
-print('删除预订单以后剩余单数：',len(redata))
-#--------------------------------------------------------------------------------------------------------------------
-#修改时间
-#data=pd.read_csv('/Users/zhangningning/Downloads/GALAXY_17346323_20180412_193009.txt_17346323_20180412_193009.txt',sep='\t')
-#--------------------------------------------------------------------------------------------
-#3.按照城市，商家分组，得出占比
-group1=redata[['waybill_id','city_id','new_shop']].groupby(['city_id','new_shop'],sort=False).count()
-group1=group1.rename(columns={'waybill_id':'count'})
+# -----------------------------------------------------------------------------------
+# 1.删除重复数据
+dup = redata[redata.duplicated(['waybill_id'], False) == True]
+redata.drop(dup.index, inplace=True)
+print('删除重复数据剩余单数：', len(redata))
+# -----------------------------------------------------------------------------------------------------------------------
+# 2.删除预订单
+prebook = pd.read_csv('/Users/zhangningning/Downloads/prebook.txt_17161213_20180410_142638.txt', sep='\t')
+prebook1 = prebook[
+    ['interface_feature_haikui_waybill_day.waybill_id', 'interface_feature_haikui_waybill_day.is_prebook']]
+redata = pd.merge(redata, prebook1, left_on='waybill_id', right_on='interface_feature_haikui_waybill_day.waybill_id',
+                  how='left')
+redata = redata[redata['interface_feature_haikui_waybill_day.is_prebook'] != 1.0]
+print('删除预订单以后剩余单数：', len(redata))
+# --------------------------------------------------------------------------------------------------------------------
+# 修改时间
+create_unix_time = pd.read_csv(
+    '/Users/zhangningning/Downloads/GALAXY_17346323_20180412_193009.txt_17346323_20180412_193009.txt', sep='\t')
+pd.merge(redata, create_unix_time, left_on=['dt', 'waybill_id', 'rider_id'], right_on=['dt', 'waybill_id', 'rider_id'],
+         how='left')
+# --------------------------------------------------------------------------------------------
+# 3.按照城市，商家分组，得出占比
+group1 = redata[['waybill_id', 'city_id', 'new_shop']].groupby(['city_id', 'new_shop'], sort=False).count()
+group1 = group1.rename(columns={'waybill_id': 'count'})
 group1.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/count.txt')
-group1=pd.read_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/count.txt',sep=',')
-group1['rate(%)']=group1['count']/len(redata)*100
+group1 = pd.read_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/count.txt', sep=',')
+group1['rate(%)'] = group1['count'] / len(redata) * 100
 group1.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/city_shop_count.txt')
-#按照商家分组
-group2=redata[['waybill_id','new_shop']].groupby(['new_shop'],sort=False).count()
-group2=group2.rename(columns={'waybill_id':'count'})
+# 按照商家分组
+group2 = redata[['waybill_id', 'new_shop']].groupby(['new_shop'], sort=False).count()
+group2 = group2.rename(columns={'waybill_id': 'count'})
 group2.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/shop_count.txt')
-group2=pd.read_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/shop_count.txt',sep=',')
-group2['rate(%)']=group2['count']/len(redata)*100
+group2 = pd.read_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/shop_count.txt', sep=',')
+group2['rate(%)'] = group2['count'] / len(redata) * 100
 group2.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/shop_count.txt')
-#---------------------------------------------------------------------------------------------
-#4.筛选特征全部都有的数据
-redata=redata[pd.isnull(redata['waybill_area_ridercount_without_busy'])==False]
-redata=redata[pd.isnull(redata['waybill_area_deliverdcount_past_30min'])==False]
-redata=redata[pd.isnull(redata['waybill_poi_untakecount'])==False]
-redata=redata[pd.isnull(redata['goods_total_price'])==False]
-redata=redata[pd.isnull(redata['arrive_time'])==False]
-print('筛选特征全部都有的数据',len(redata))
-#-----------------------------------------------------------------------------------------------
-#5.筛选多单
-single_data=redata[redata.duplicated(['segment_start_tm','segment_end_tm'],False)==False]
-single_data.sort_values(by='segment_start_tm')[['trace_arrive_shop_tm','trace_leave_shop_tm','segment_start_tm','segment_end_tm']]
-print('一单的海葵订单数：',len(single_data))
-multi_data=redata[redata.duplicated(['segment_start_tm','segment_end_tm'],False)==True]
-multi_data.sort_values(by='segment_start_tm')[['trace_arrive_shop_tm','trace_leave_shop_tm','segment_start_tm','segment_end_tm']]
-print('多单的海葵订单数：',len(multi_data))
-#------------------------------------------------------------------------------------------------------------------------------------
-#6.筛选连咖啡上海的海葵单
-#XY=redata[(redata['shop']=='连咖啡')&(redata['city_id']==310100)]
-#print('连咖啡上海的海葵单总单数：',len(XY))
-XY_single=single_data[(single_data['shop']=='连咖啡')&(single_data['city_id']==310100)]
-#XY_single.sort_values(by='segment_start_tm')[['trace_arrive_shop_tm','trace_leave_shop_tm','segment_start_tm','segment_end_tm']]
-print('连咖啡上海海葵订单数（一单）：',len(XY_single))
+
+# ---------------------------------------------------------------------------------------------
+# 4.筛选特征全部都有的数据
+redata = redata[pd.isnull(redata['waybill_area_ridercount_without_busy']) == False]
+redata = redata[pd.isnull(redata['waybill_area_deliverdcount_past_30min']) == False]
+redata = redata[pd.isnull(redata['waybill_poi_untakecount']) == False]
+redata = redata[pd.isnull(redata['goods_total_price']) == False]
+redata = redata[pd.isnull(redata['arrive_time']) == False]
+print('筛选特征全部都有的数据', len(redata))
+# -----------------------------------------------------------------------------------------------
+# 5.筛选多单
+single_data = redata[(20180310 < redata['dt']) & (redata['dt'] < 20180321)][
+    redata.duplicated(['segment_start_tm', 'segment_end_tm'], False) == False]
+single_data.sort_values(by='segment_start_tm')[
+    ['trace_arrive_shop_tm', 'trace_leave_shop_tm', 'segment_start_tm', 'segment_end_tm']]
+print('一单的海葵订单数：', len(single_data))
+multi_data = redata[(20180322 < redata['dt']) & (redata['dt'] < 20180327)][
+    redata.duplicated(['rider_id', 'segment_start_tm', 'segment_end_tm'], False) == True]
+multi_data.sort_values(by='segment_start_tm')[
+    ['trace_arrive_shop_tm', 'trace_leave_shop_tm', 'segment_start_tm', 'segment_end_tm']]
+
+print('多单的海葵订单数：', len(multi_data))
+# ------------------------------------------------------------------------------------------------------------------------------------
+# 6.筛选连咖啡上海的海葵单
+# XY=redata[(redata['shop']=='连咖啡')&(redata['city_id']==310100)]
+# print('连咖啡上海的海葵单总单数：',len(XY))
+XY_single = single_data[(single_data['shop'] == '连咖啡') & (single_data['city_id'] == 310100)]
+# XY_single.sort_values(by='segment_start_tm')[['trace_arrive_shop_tm','trace_leave_shop_tm','segment_start_tm','segment_end_tm']]
+print('连咖啡上海海葵订单数（一单）：', len(XY_single))
 print(XY_single.corr())
-#-------------------------------------------------------------------------------------------------------------------------------------
-#7.将连咖啡上海一个订单的作为训练数据，得出模型参数
-#7.1设置异常值的边界为15分钟
-unnormal_time=900
-X_bj_lian_single=XY_single[XY_single['take_duration']<unnormal_time][['waybill_area_ridercount_without_busy','waybill_poi_untakecount','waybill_area_deliverdcount_past_30min','goods_total_price','arrive_time']]
-y_bj_lian_single=XY_single[XY_single['take_duration']<unnormal_time]['take_duration']
-print('训练数据的数据量大小：',len(X_bj_lian_single))
-#7.2删除训练数据中入离店时长大于15分钟的订单
-LR=LinearRegression()
-model=LR.fit(X_bj_lian_single,y_bj_lian_single)
-print('R方',model.score)
-print('模型参数',model.coef_)
-#------------------------------------------------------------------------------------------------------------------------------------
-#8利用上面训练得到的模型对多单的海葵单进行估计
-#8.1对连咖啡上海的订单用模型去预估，对其他订单均采取5分钟策略
-SH_lian_multi=multi_data[(multi_data['shop']=='连咖啡')&(multi_data['city_id']==310100)]
-XY_multi=SH_lian_multi[['waybill_area_ridercount_without_busy','waybill_poi_untakecount','waybill_area_deliverdcount_past_30min','goods_total_price','arrive_time','take_duration']]
-X_multi=SH_lian_multi[['waybill_area_ridercount_without_busy','waybill_poi_untakecount','waybill_area_deliverdcount_past_30min','goods_total_price','arrive_time']]
-#利用一单训练的参数预测多单的时长
-SH_lian_multi['y_pre_multi']=model.predict(X_multi)
-non_SH_lian_multi=multi_data[(multi_data['shop']!='连咖啡') or (multi_data['city_id']!=310100)]
-non_SH_lian_multi['y_pre_multi']=300
-new_multi_data=pd.concat([SH_lian_multi,non_SH_lian_multi],axis=0)
-#8.1得到含有连咖啡上海的海葵单
-#分组
-new_multi_data.sort_values(by='segment_start_tm')[['trace_arrive_shop_tm','trace_leave_shop_tm','segment_start_tm','segment_end_tm']]
-print('连咖啡上海海葵单订单数（多单）：',len(new_multi_data))
-new_multi_data=new_multi_data.sort_values(by=['segment_start_tm','segment_end_tm'])
+# -------------------------------------------------------------------------------------------------------------------------------------
+# 7.将连咖啡上海一个订单的作为训练数据，得出模型参数
+# 7.1设置异常值的边界为15分钟
+unnormal_time = 900
+X_bj_lian_single = XY_single[XY_single['take_duration'] < unnormal_time][
+    ['waybill_area_ridercount_without_busy', 'waybill_poi_untakecount', 'waybill_area_deliverdcount_past_30min',
+     'goods_total_price', 'arrive_time']]
+y_bj_lian_single = XY_single[XY_single['take_duration'] < unnormal_time]['take_duration']
+print('训练数据的数据量大小：', len(X_bj_lian_single))
+# 7.2删除训练数据中入离店时长大于15分钟的订单
+LR = LinearRegression()
+model = LR.fit(X_bj_lian_single, y_bj_lian_single)
+print('R方', model.score)
+print('模型参数', model.coef_)
+# ------------------------------------------------------------------------------------------------------------------------------------
+# 8利用上面训练得到的模型对多单的海葵单进行估计
+# 8.1对连咖啡上海的订单用模型去预估，对其他订单均采取5分钟策略
+SH_lian_multi = multi_data[(multi_data['shop'] == '连咖啡') & (multi_data['city_id'] == 310100)]
+XY_multi = SH_lian_multi[
+    ['waybill_area_ridercount_without_busy', 'waybill_poi_untakecount', 'waybill_area_deliverdcount_past_30min',
+     'goods_total_price', 'arrive_time', 'take_duration']]
+X_multi = SH_lian_multi[
+    ['waybill_area_ridercount_without_busy', 'waybill_poi_untakecount', 'waybill_area_deliverdcount_past_30min',
+     'goods_total_price', 'arrive_time']]
+# 利用一单训练的参数预测多单的时长
+SH_lian_multi['y_pre_multi'] = model.predict(X_multi)
+non_SH_lian_multi = multi_data[(multi_data['shop'] != '连咖啡') | (multi_data['city_id'] != 310100)]
+non_SH_lian_multi['y_pre_multi'] = 300
+new_multi_data = pd.concat([SH_lian_multi, non_SH_lian_multi], axis=0)
+# 8.1得到含有连咖啡上海的海葵单
+# 分组
+new_multi_data.sort_values(by='segment_start_tm')[
+    ['trace_arrive_shop_tm', 'trace_leave_shop_tm', 'segment_start_tm', 'segment_end_tm']]
+print('连咖啡上海海葵单订单数（多单）：', len(new_multi_data))
+new_multi_data = new_multi_data.sort_values(by=['segment_start_tm', 'segment_end_tm'])
 print(len(new_multi_data))
-da_id=pd.read_csv('/Users/zhangningning/Downloads/区域idGALAXY_17318853_20180412_113801.txt_17318853_20180412_113801.txt',sep='\t')
-new_multi_data=pd.merge(new_multi_data,da_id,left_on='waybill_id',right_on='waybill_id',how='left')
+da_id = pd.read_csv(
+    '/Users/zhangningning/Downloads/区域idGALAXY_17318853_20180412_113801.txt_17318853_20180412_113801.txt', sep='\t')
+new_multi_data = pd.merge(new_multi_data, da_id, left_on='waybill_id', right_on='waybill_id', how='left')
 print(len(new_multi_data))
-speed=pd.read_csv('/Users/zhangningning/Downloads/平均速度GALAXY_17321427_20180412_120358.txt_17321427_20180412_120358.txt',sep='\t')
-new_multi_data=pd.merge(new_multi_data,speed,left_on=['dt_x','da_id'],right_on=['dt','area_id'],how='left')
-print(len(new_multi_data))
-group3=new_multi_data.groupby(['segment_start_tm','segment_end_tm'])
-group_multi=list(group3)
-c=0
-for i in range(len(group_multi)):
-    da=group_multi[i-c][1]
-    if len(da[(da['shop']=='连咖啡')&(da['city_id']==310100)])==0:
-        del group_multi[i-c]
-        c=c+1
-#9.对多单利用之前的预估结果得出最终的预估结果
-#对每一个小组都实行相同的规则
-def panduan(data):
-    same_shop=data[data.duplicated(['poi_id'],False)==True]
-    if len(same_shop)==len(data):
-        return 1
-    else:
-        return len(data),len(same_shop)
-a=[]
-for i in range(len(group_multi)):
-    a.append(panduan(group_multi[i][1]))
-print('同店占比：',sum(a)/len(group_multi))
-  
-#根据经纬度计算距离 
-def haversine(lon1, lat1, lon2, lat2): # 经度1，纬度1，经度2，纬度2 （十进制度数）  
-    """ 
-    Calculate the great circle distance between two points  
-    on the earth (specified in decimal degrees) 
-    """  
-    # 将十进制度数转化为弧度  
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])  
-  
-    # haversine公式  
-    dlon = lon2 - lon1   
-    dlat = lat2 - lat1   
-    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2  
-    c = 2 * asin(sqrt(a))   
-    r = 6371 # 地球平均半径，单位为公里  
-    return c * r * 1000 
 
-def pre_multi_take_duration(data):
-    same_shop=data[data.duplicated(['poi_id'],False)==True]
-    diff_shop=data[data.duplicated(['poi_id'],False)==False]
-    max_take_duration=max(same_shop['y_pre_multi'])
-    min_arrive_time=min(same_shop['trace_arrive_shop_tm'])
-    max_leave_time=max(same_shop['trace_leave_shop_tm'])
-    real_take_duration=max_leave_time-min_arrive_time
-    data['real_take_duration']=real_take_duration
-    if max_take_duration<120:
-        max_take_duration=120
-    data['pre_take_duration']=max_take_duration
-#    elif len(same_shop)==0:
-#        data['pre_take_duration']=sum(data['y_pre_multi'])+ haversine()/data['speed_avg'] 
-#    else:
-        if min(same_shop['trace_arrive_shop_tm'])
-        
-        
-        
-    
-    data['error']=data['real_take_duration']-data['pre_take_duration']
-    return max(data['error'])
-error=[]
-for i in range(len(group_multi)):
-    print(i)
-    error.append(pre_multi_take_duration(group_multi[i][1]))        
-error=pd.Series(error)
-#计算置信度
-def conf_level(data,limit): 
-    return sum(data[abs(data[0])<limit][1])/sum(data[1])
+#speed = pd.read_csv('/Users/zhangningning/Downloads/平均速度GALAXY_17321427_20180412_120358.txt_17321427_20180412_120358.txt', sep='\t')
+#new_multi_data = pd.merge(new_multi_data, speed, left_on=['dt_x', 'da_id'], right_on=['dt', 'area_id'], how='left')
+#print(len(new_multi_data))
+#group3 = new_multi_data.groupby(['rider_id', 'segment_start_tm', 'segment_end_tm'])
+shanghai_lian=new_multi_data[(new_multi_data['shop'] == '连咖啡') & (new_multi_data['city_id'] == 310100)]
+#看上海连咖啡中哪个门店的多单比较多
+group6 = shanghai_lian[['waybill_id', 'new_shop','city']].groupby(['city'], sort=False).count()
+group6 = group6.rename(columns={'waybill_id': 'count'})
+group6.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/连咖啡.txt')
+group6 = pd.read_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/连咖啡.txt', sep=',')
+group6['rate(%)'] = group6['count'] / len(shanghai_lian) * 100
+group6.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/连咖啡.txt')
 
-print('ME',sum(e[0])/sum(num))
-print('MAE',sum(abs(e[0]))/sum(num))
-conf_level_1min=conf_level(e,60)
-print('1min 置信度',conf_level_1min)
-conf_level_2min=conf_level(e,120)
-print('2min 置信度',conf_level_2min)
-conf_level_3min=conf_level(e,180)
-print('3min 置信度',conf_level_3min)
-conf_level_4min=conf_level(e,240)
-print('4min 置信度',conf_level_4min)
-conf_level_5min=conf_level(e,300)
-print('5min 置信度',conf_level_5min)
-conf_level_10min=conf_level(e,600)
-print('10min 置信度',conf_level_10min)
-conf_level_15min=conf_level(e,15*60)
-print('15min 置信度',conf_level_15min) 
-num=[]
-for i in range(len(group_multi)):
-    num.append(len(group_multi[i][1]))
-    
-#线上的模型
-print('ME',sum(on_e[0])/sum(num))
-print('MAE',sum(abs(on_e[0]))/sum(num))
-conf_level_1min=conf_level(on_e,60)
-print('1min 置信度',conf_level_1min)
-conf_level_2min=conf_level(on_e,120)
-print('2min 置信度',conf_level_2min)
-conf_level_3min=conf_level(on_e,180)
-print('3min 置信度',conf_level_3min)
-conf_level_4min=conf_level(on_e,240)
-print('4min 置信度',conf_level_4min)
-conf_level_5min=conf_level(on_e,300)
-print('5min 置信度',conf_level_5min)
-conf_level_10min=conf_level(on_e,600)
-print('10min 置信度',conf_level_10min)
-conf_level_15min=conf_level(on_e,15*60)
-print('15min 置信度',conf_level_15min) 
-on_error=[]
-for i in range(len(group_multi)):
-    print(i)
-    on_error.append(max(group_multi[i][1]['real_take_duration']-300)) 
-on_e=pd.concat([on_error,num],axis=1)
-time=[]
-for i in range(len(group_multi)):
-    print(i)
-    time.append(max(group_multi[i][1]['real_take_duration']))
-time=pd.Series(time)
-new_time=pd.concat([time,num],axis=1)
+
+
+group4 = shanghai_lian.groupby(['rider_id', 'segment_start_tm', 'segment_end_tm']).agg({'poi_id':pd.Series.nunique,'waybill_id':np.count_nonzero}).reset_index()
+group3 = new_multi_data.groupby(['rider_id', 'segment_start_tm', 'segment_end_tm']).agg({'poi_id':pd.Series.nunique,'trace_leave_shop_tm':np.max,'trace_arrive_shop_tm':np.min, 'y_pre_multi':np.max,'waybill_id':np.count_nonzero}).reset_index()
+shaixuan=pd.merge(group3,group4,left_on=['rider_id','segment_start_tm','segment_end_tm','poi_id'],right_on=['rider_id','segment_start_tm','segment_end_tm','poi_id'],how='inner')
+shaixuan.loc[:,'duration'] = shaixuan.apply(lambda x: 120 if x['y_pre_multi'] < 120 else x['y_pre_multi'], axis=1)
+shaixuan.loc[:,'real_time']=shaixuan['trace_leave_shop_tm']-shaixuan['trace_arrive_shop_tm']
+shaixuan.loc[:,'error']=shaixuan['real_time']-shaixuan['duration']
+
+juzhen=shaixuan[['error','waybill_id_x']]
+xingenglu=new_multi_data[(new_multi_data['shop'] == '连咖啡') & (new_multi_data['city_id'] == 310100)&(new_multi_data['city']=='汶水东路店')]
+group5=xingenglu.groupby(['rider_id', 'segment_start_tm', 'segment_end_tm']).agg({'poi_id':pd.Series.nunique,'waybill_id':np.count_nonzero}).reset_index()
+aaaaa=pd.merge(group3,group5,left_on=['rider_id','segment_start_tm','segment_end_tm','poi_id'],right_on=['rider_id','segment_start_tm','segment_end_tm','poi_id'],how='inner')
+aaaaa.loc[:,'real_time']=aaaaa['trace_leave_shop_tm']-aaaaa['trace_arrive_shop_tm']
+b=pd.concat([aaaaa['waybill_id_x'],aaaaa['real_time']],axis=1)
+c2=b[b['waybill_id_x']==2]['real_time']
+c3=b[b['waybill_id_x']==3]['real_time']
+c4=b[b['waybill_id_x']==4]['real_time']
+c5=b[b['waybill_id_x']==5]['real_time']
+c6=b[b['waybill_id_x']==6]['real_time']
+c=pd.concat([c2,c3,c4,c5,c6],axis=1,join='outer')
+c.boxplot()
+
+#分析区域id维度多单的单数与取餐时长的关系
+group7 = shanghai_lian[['waybill_id','da_id']].groupby(['da_id'], sort=False).count()
+group7 = group7.rename(columns={'waybill_id': 'count'})
+group7.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/da_id.txt')
+group7 = pd.read_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/da_id.txt', sep=',')
+group7['rate(%)'] = group7['count'] / len(shanghai_lian) * 100
+group7.to_csv('/Users/zhangningning/美团实习/2018.04.01-海葵单骑手入离店时间估计/da_id.txt')
+da_id=new_multi_data[(new_multi_data['shop'] == '连咖啡') & (new_multi_data['city_id'] == 310100)&(new_multi_data['da_id']==437)]
+group8=da_id.groupby(['rider_id', 'segment_start_tm', 'segment_end_tm']).agg({'da_id':pd.Series.nunique,'waybill_id':np.count_nonzero}).reset_index()
+aaaaa=pd.merge(group3,group8,left_on=['rider_id','segment_start_tm','segment_end_tm'],right_on=['rider_id','segment_start_tm','segment_end_tm'],how='inner')
+aaaaa.loc[:,'real_time']=aaaaa['trace_leave_shop_tm']-aaaaa['trace_arrive_shop_tm']
+b=pd.concat([aaaaa['waybill_id_x'],aaaaa['real_time']],axis=1)
+c2=b[b['waybill_id_x']==2]['real_time']
+print('2单',len(c2))
+print(c2.describe())
+c3=b[b['waybill_id_x']==3]['real_time']
+print('3单',len(c3))
+print(c3.describe())
+c4=b[b['waybill_id_x']==4]['real_time']
+print('4单',len(c4))
+print(c4.describe())
+c5=b[b['waybill_id_x']==5]['real_time']
+print('5单',len(c5))
+print(c5.describe())
+c6=b[b['waybill_id_x']==6]['real_time']
+print('6单',len(c6))
+print(c2.describe())
+c7=b[b['waybill_id_x']==7]['real_time']
+print('7单',len(c7))
+print(c7.describe())
+c=pd.concat([c2,c3,c4,c5,c6,c7],axis=1,join='outer')
+c.boxplot()
+
+# 计算置信度
+def conf_level(data, limit):
+    a=juzhen[abs(data['error'])<limit]
+    return sum(a['waybill_id_x'])/sum(data['waybill_id_x'])
+
+
+# 我们的模型的效果
+print('模型参数：', model.coef_)
+print('ME', sum(juzhen['error']*juzhen['waybill_id_x']) / sum(juzhen['waybill_id_x']))
+print('MAE', sum(abs(juzhen['error'])*juzhen['waybill_id_x'])/ sum(juzhen['waybill_id_x']))
+conf_level_1min = conf_level(juzhen, 60)
+print('1min 置信度', conf_level_1min)
+conf_level_2min = conf_level(juzhen, 120)
+print('2min 置信度', conf_level_2min)
+conf_level_3min = conf_level(juzhen, 180)
+print('3min 置信度', conf_level_3min)
+conf_level_4min = conf_level(juzhen, 240)
+print('4min 置信度', conf_level_4min)
+conf_level_5min = conf_level(juzhen, 300)
+print('5min 置信度', conf_level_5min)
+conf_level_10min = conf_level(juzhen, 600)
+print('10min 置信度', conf_level_10min)
+conf_level_15min = conf_level(juzhen, 15 * 60)
+print('15min 置信度', conf_level_15min)
+#plt.hist(d['take_duration'])
+#plt.title('my_pre')
+#plt.xlabel('Actual-prediction')
+#plt.ylabel('ME')
+#plt.show()
+on_error = shaixuan['real_time']-300
+on_e = pd.concat([on_error, shaixuan['waybill_id_x']], axis=1)
+on_e.columns={'error','waybill_id_x'}
+# 线上的模型
+print('ME', sum(on_e['error']*on_e['waybill_id_x']) / sum(on_e['waybill_id_x']))
+print('MAE', sum(abs(on_e['error'])*on_e['waybill_id_x'])/ sum(on_e['waybill_id_x']))
+conf_level_1min = conf_level(on_e, 60)
+print('1min 置信度', conf_level_1min)
+conf_level_2min = conf_level(on_e, 120)
+print('2min 置信度', conf_level_2min)
+conf_level_3min = conf_level(on_e, 180)
+print('3min 置信度', conf_level_3min)
+conf_level_4min = conf_level(on_e, 240)
+print('4min 置信度', conf_level_4min)
+conf_level_5min = conf_level(on_e, 300)
+print('5min 置信度', conf_level_5min)
+conf_level_10min = conf_level(on_e, 600)
+print('10min 置信度', conf_level_10min)
+conf_level_15min = conf_level(on_e, 15 * 60)
+print('15min 置信度', conf_level_15min)
+
+#线上+补丁
+a=map(lambda x: 5*60 if (x>=1) and (x<=3) else (8*60 if (x>=4) and (x<=6) else (11*60 if (x>=7) and (x<=9) else 17*60)),shaixuan['waybill_id_x'])
+b=list(a)
+on_error = shaixuan['real_time']-b
+on_e = pd.concat([on_error, shaixuan['waybill_id_x']], axis=1)
+on_e.columns={'error','waybill_id_x'}
+print('线上+补丁')
+print('ME', sum(on_e['error']*on_e['waybill_id_x']) / sum(on_e['waybill_id_x']))
+print('MAE', sum(abs(on_e['error'])*on_e['waybill_id_x'])/ sum(on_e['waybill_id_x']))
+conf_level_1min = conf_level(on_e, 60)
+print('1min 置信度', conf_level_1min)
+conf_level_2min = conf_level(on_e, 120)
+print('2min 置信度', conf_level_2min)
+conf_level_3min = conf_level(on_e, 180)
+print('3min 置信度', conf_level_3min)
+conf_level_4min = conf_level(on_e, 240)
+print('4min 置信度', conf_level_4min)
+conf_level_5min = conf_level(on_e, 300)
+print('5min 置信度', conf_level_5min)
+conf_level_10min = conf_level(on_e, 600)
+print('10min 置信度', conf_level_10min)
+conf_level_15min = conf_level(on_e, 15 * 60)
+print('15min 置信度', conf_level_15min)
